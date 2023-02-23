@@ -46,6 +46,7 @@ use sui_types::signature::GenericSignature;
 use sui_types::{
     base_types::{ObjectID, SuiAddress},
     gas_coin::GasCoin,
+    messages::TransactionData,
     messages::{Transaction, VerifiedTransaction},
     object::Owner,
     parse_sui_type_tag, SUI_FRAMEWORK_ADDRESS,
@@ -446,6 +447,12 @@ pub enum SuiClientCommands {
         /// A list of Base64 encoded signatures `flag || signature || pubkey`.
         #[clap(long)]
         signatures: Vec<String>,
+    },
+
+    DeserializeTx {
+        /// BCS serialized transaction data bytes without its type tag, as base-64 encoded string.
+        #[clap(long)]
+        tx_bytes: String,
     },
 }
 
@@ -970,6 +977,18 @@ impl SuiClientCommands {
                 let response = context.execute_transaction(verified).await?;
                 SuiClientCommandResult::ExecuteSignedTx(response)
             }
+
+            SuiClientCommands::DeserializeTx { tx_bytes } => {
+                let data = bcs::from_bytes(
+                    &Base64::try_from(tx_bytes)
+                        .map_err(|e| anyhow!(e))?
+                        .to_vec()
+                        .map_err(|e| anyhow!(e))?,
+                )?;
+
+                SuiClientCommandResult::DeserializeTx(data)
+            }
+
             SuiClientCommands::NewEnv { alias, rpc, ws } => {
                 if context.config.envs.iter().any(|env| env.alias == alias) {
                     return Err(anyhow!(
@@ -1357,6 +1376,9 @@ impl Display for SuiClientCommandResult {
             SuiClientCommandResult::ExecuteSignedTx(response) => {
                 write!(writer, "{}", write_transaction_response(response)?)?;
             }
+            SuiClientCommandResult::DeserializeTx(response) => {
+                write!(writer, "{:#?}", response)?;
+            }
             SuiClientCommandResult::SerializeTransferSui(data) => {
                 writeln!(writer, "Raw tx_bytes to execute: {}", data)?;
             }
@@ -1534,6 +1556,7 @@ pub enum SuiClientCommandResult {
     CreateExampleNFT(GetObjectDataResponse),
     SerializeTransferSui(String),
     ExecuteSignedTx(SuiTransactionResponse),
+    DeserializeTx(TransactionData),
     NewEnv(SuiEnv),
 }
 
